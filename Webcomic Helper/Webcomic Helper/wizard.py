@@ -345,7 +345,7 @@ class WebComicHelperWizard(Form):
         self._open_webcomic.Text = "Open WebComic in ComicRack"
         self._open_webcomic.TabIndex = 0
         self._open_webcomic.BackColor = System.Drawing.SystemColors.ControlLightLight
-        self._open_webcomic.Checked = True
+        self._open_webcomic.Checked = False
         # 
         # label13
         # 
@@ -570,6 +570,7 @@ class WebComicHelperWizard(Form):
         if self._wizard.Pages[e.NewIndex] == self._wpFinished:
             self._wizard.NextEnabled = False
             self._wizard.BackEnabled = False
+            self._open_webcomic.Checked = True
             self._wizard.CancelText = "Finish"
 
 

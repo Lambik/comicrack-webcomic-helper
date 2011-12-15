@@ -56,7 +56,7 @@ def WebComicHelper(books):
 
     opencomic = f._open_webcomic.Checked
 
-    if not r == DialogResult.Cancel:
+    if r != DialogResult.Cancel:
         if opencomic:
             ComicRack.App.OpenBooks.Open(f.book, 0, 0)
 
@@ -87,6 +87,23 @@ def webcomic_helper_do_work(worker, e):
         global second_page_uri
         first_page_uri = System.Uri(first_page_url)
         second_page_uri = System.Uri(second_page_url)
+
+        global escaped_first_page_uri
+        global escaped_second_page_uri
+
+        escaped_first_page_uri = System.Uri(escape_uri_string(first_page_uri))
+        escaped_second_page_uri = System.Uri(escape_uri_string(second_page_uri))
+
+        escaped_image_url = escape_uri_string(image_url)
+
+        if debug:
+            print first_page_uri.AbsoluteUri
+            print second_page_uri.AbsoluteUri
+            print escaped_first_page_uri.AbsoluteUri
+            print escaped_second_page_uri.AbsoluteUri
+            print image_url
+            print escaped_image_url
+            
 
     except UriFormatException, ex:
         #Errored occured. Raise an error to exit the background thread
@@ -160,7 +177,7 @@ def webcomic_helper_do_work(worker, e):
             e.Cancel = True
             return
 
-        result = check_regex_against_source(imageregex, image_url)
+        result = check_regex_against_source(imageregex, image_url, escaped_image_url)
 
         if result:
             valid_image_regex.append(result)
@@ -205,7 +222,7 @@ def webcomic_helper_do_work(worker, e):
             e.Cancel = True
             return
 
-        result = check_regex_against_source(linkregex, second_page_uri.AbsoluteUri)
+        result = check_regex_against_source(linkregex, second_page_uri.AbsoluteUri, escaped_second_page_uri.AbsoluteUri)
 
         if result:
             valid_link_regex.append(result)
@@ -249,7 +266,7 @@ def webcomic_helper_do_work(worker, e):
     return
 
 
-def check_regex_against_source(regex, check_value):
+def check_regex_against_source(regex, check_value, check_value2):
 
     matches = Regex.Matches(first_page_source._source, regex._regex, RegexOptions.IgnoreCase)
 
@@ -264,7 +281,7 @@ def check_regex_against_source(regex, check_value):
         result, result_uri = Uri.TryCreate(first_page_uri, matches[0].Groups["link"].Value)
         
         
-        if result and result_uri.AbsoluteUri == check_value:
+        if result and result_uri.AbsoluteUri in (check_value, check_value2):
 
             #Valid url and matches against the check_value
 
@@ -332,12 +349,15 @@ def create_image_regex(first_image_url, second_image_url):
     baseuri = Uri(base)
 
     
-    if baseuri.Host == first_page_uri.Host:
-        domain, relative = new_get_relative_link(first_page_uri.AbsoluteUri, base)
+    relativeuri = first_page_uri.MakeRelativeUri(baseuri)
 
+    if relativeuri.IsAbsoluteUri:
+        domain = relativeuri.Scheme + "://" + relativeuri.Host
+        relative = relativeuri.AbsolutePath
+    
     else:
         domain = baseuri.Scheme + "://" + baseuri.Host
-        relative = baseuri.AbsolutePath
+        relative = relativeuri.OriginalString
 
     domain = escape_regex_characters(domain)
 
@@ -405,21 +425,6 @@ def create_image_regex(first_image_url, second_image_url):
     return imgregex
 
 
-def new_get_relative_link(page_url, url):
-    """Returns the possible relative link of the url when it is linked in the page_url"""
-    page_url = list(page_url)
-    url = list(url)
-    result = []
-    base = []
-    for i in range(0, len(page_url)):
-        if page_url[i] != url[i]:
-            result = url[i:]
-            base = url[:i]
-            break
-
-    return "".join(base), "".join(result)
-
-
 def replace_date_values(string):
     string = Regex.Replace(string, r"(?<=/)\d+(?=/)", r"(?<=/)\d+(?=/)", RegexOptions.IgnoreCase)
     string = Regex.Replace(string, r"(?<=/)(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?=/)",
@@ -428,8 +433,21 @@ def replace_date_values(string):
     return string
 
 
+def escape_uri_string(uri):
+    if type(uri) != System.Uri:
+        uri = Uri(uri)
+    string = uri.AbsolutePath
+    for character in ["%", "!", "*", "'", "(", ")", ";", ":", "@", "&", "=", "+", "$", ",", "?", "#", "[", "]", " "]:
+        string = string.replace(character, Uri.HexEscape(character))
+
+    return uri.Scheme + "://" + uri.Host + string
+
+
 def check_created_image_regex(first_image_url, second_image_url, regex):
     matches = Regex.Matches(first_page_source._source, regex, RegexOptions.IgnoreCase)
+
+    escaped_first_image_url = escape_uri_string(first_image_url)
+    escaped_second_image_url = escape_uri_string(second_image_url)
 
     if matches.Count == 0:
         return False, 0
@@ -443,7 +461,7 @@ def check_created_image_regex(first_image_url, second_image_url, regex):
         result, image_uri = Uri.TryCreate(first_page_uri, matches[0].Groups["link"].Value)
             
         #Valid url and matches the input image url
-        if result and image_uri.AbsoluteUri == first_image_url:
+        if result and image_uri.AbsoluteUri in (first_image_url, escaped_first_image_url):
             if debug: print "Valid uri and matches image url"
 
         else:
@@ -464,7 +482,7 @@ def check_created_image_regex(first_image_url, second_image_url, regex):
 
         result, image_uri = Uri.TryCreate(second_page_uri, matches_second[0].Groups["link"].Value)
 
-        if result and image_uri.AbsoluteUri == second_image_url:
+        if result and image_uri.AbsoluteUri in (second_image_url, escaped_second_image_url):
                         
             if debug: print "Regex works on both pages and returns the correct image"
             return True, matches.Count
@@ -511,7 +529,7 @@ def create_next_link_regx_with_image(next_link_image_url):
         
         #Try with a relative link:
 
-        relative_next_link_url = get_relative_link(first_page_uri.AbsoluteUri, next_link_image_url)
+        relative_next_link_url = first_page_uri.MakeRelativeUri(Uri(next_link_image_url)).OriginalString
 
         if debug: print "Trying with relative image url:\n" + relative_next_link_url
 
@@ -576,7 +594,7 @@ def check_created_link_regex(regex):
         result, link_uri = Uri.TryCreate(first_page_uri, matches[0].Groups["link"].Value)
             
         #Valid url and matches the input image url
-        if result and link_uri.AbsoluteUri == second_page_uri.AbsoluteUri:
+        if result and link_uri.AbsoluteUri in (second_page_uri.AbsoluteUri, escaped_second_page_uri.AbsoluteUri):
             if debug: print "Valid uri and matches the second page url"
 
         else:
