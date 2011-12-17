@@ -42,6 +42,8 @@ from common import LinkRegex, ImageRegex, WebComicHelperResult, WebComicHelperRe
 debug = True
 print_source = False
 
+debug_backup_regex = False
+
 import wizard
 
 #@Name Webcomic Helper
@@ -72,6 +74,9 @@ def webcomic_helper_do_work(worker, e):
     worker.ReportProgress(0, "Loading regex from file")
     images_regex, links_regex, sites = regexloader.load_regex_from_file(REGEX_FILE)
 
+    if debug_backup_regex:
+        images_regex = []
+        links_regex = []
 
     #Load the variables passed from the form. It should be in the form of a dict
     first_page_url = e.Argument["FirstPage"]
@@ -531,18 +536,31 @@ def create_next_link_regx_with_image(next_link_image_url):
 
         relative_next_link_url = first_page_uri.MakeRelativeUri(Uri(next_link_image_url)).OriginalString
 
-        if debug: print "Trying with relative image url:\n" + relative_next_link_url
+        if debug: print "Trying with relative image url: " + relative_next_link_url
+
+        relative_next_link_url = relative_next_link_url.lstrip("/")
 
         relative_next_link_url = escape_regex_characters(relative_next_link_url)
 
-        regex = "<a\\s[^<>]*href\\s*=\\s*(?([\"'])[\"'](?<link>[^\"']+)[\"']|(?<link>[^\\s<>]+))[^<>]*>[\\s\\n\\r\\t]*<img\\s[^<>]*src\\s*=\\s*[\"']?/?" + relative_next_link_url + "[\"']?"
+
+
+        regex = "<a\\s[^<>]*href\\s*=\\s*(?([\"'])[\"'](?<link>[^\"']+)[\"']|(?<link>[^\\s<>]+))[^<>]*>[\\s\\n\\r\\t]*<img\\s[^<>]*src\\s*=\\s*[\"']?\\.*/?" + relative_next_link_url + "[\"']?"
 
         result, matches = check_created_link_regex(regex)
 
         if not result:
             
             #Try one other way
-            regex = "<a\\s[^<>]*href\\s*=\\s*(?([\"'])[\"'](?<link>[^\"']+)[\"']|(?<link>[^\\s<>]+))[^<>]*>[\\s\\n\\r\\t]*<img\\s[^<>]*src\\s*=\\s*[\"']?\\./" + relative_next_link_url + "[\"']?"
+
+            relative_next_link_url = Uri(next_link_image_url).AbsolutePath
+
+            relative_next_link_url = relative_next_link_url.lstrip("/")
+
+            relative_next_link_url = escape_regex_characters(relative_next_link_url)
+
+            if debug: print "Trying with relative image url: " + relative_next_link_url
+
+            regex = "<a\\s[^<>]*href\\s*=\\s*(?([\"'])[\"'](?<link>[^\"']+)[\"']|(?<link>[^\\s<>]+))[^<>]*>[\\s\\n\\r\\t]*<img\\s[^<>]*src\\s*=\\s*[\"']?\\.*/?" + relative_next_link_url + "[\"']?"
 
             result, matches = check_created_link_regex(regex)
 
@@ -649,19 +667,6 @@ def get_string_intersect(string1, string2):
     r.reverse()
 
     return "".join(r)
-
-
-def get_relative_link(page_url, url):
-    """Returns the possible relative link of the url when it is linked in the page_url"""
-    page_url = list(page_url)
-    url = list(url)
-    result = []
-    for i in range(0, len(page_url)):
-        if page_url[i] != url[i]:
-            result = url[i:]
-            break
-
-    return "".join(result)
 
 
 class PageSource(object):
